@@ -1,0 +1,64 @@
+REM Comparar número de tablas en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" %db1% > num_tablas_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" %db2% > num_tablas_bd2.txt
+
+REM Comparar número de vistas en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'" %db1% > num_vistas_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'" %db2% > num_vistas_bd2.txt
+
+REM Comparar número de índices en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public'" %db1% > num_indices_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public'" %db2% > num_indices_bd2.txt
+
+REM Comparar número de secuencias en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.sequences WHERE sequence_schema = 'public'" %db1% > num_secuencias_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.sequences WHERE sequence_schema = 'public'" %db2% > num_secuencias_bd2.txt
+
+REM Comparar número de funciones almacenadas en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')" %db1% > num_funciones_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')" %db2% > num_funciones_bd2.txt
+
+REM Comparar número de triggers en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.triggers WHERE event_object_schema = 'public'" %db1% > num_triggers_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM information_schema.triggers WHERE event_object_schema = 'public'" %db2% > num_triggers_bd2.txt
+
+REM Comparar número de procedimientos almacenados en cada base de datos
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND prokind = 'p'" %db1% > num_procedimientos_bd1.txt
+psql -h %servidor% -p %puerto% -U %usuario% -c "SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND prokind = 'p'" %db2% > num_procedimientos_bd2.txt
+
+REM Mostrar diferencias entre las bases de datos en un archivo SQL
+pg_dump --schema-only --no-owner --no-privileges --no-comments --no-security-labels --exclude-table-data=pg_catalog.pg_* --exclude-table-data=information_schema.* --exclude-table-data=public.spatial_ref_sys --exclude-table-data=public.geometry_columns --exclude-table-data=public.raster_columns --exclude-table-data=public.raster_overviews --file=%diferencias% --dbname=%db1%
+pg_dump --schema-only --no-owner --no-privileges --no-comments --no-security-labels --exclude-table-data=pg_catalog.pg_* --exclude-table-data=information_schema.* --exclude-table-data=public.spatial_ref_sys --exclude-table-data=public.geometry_columns --exclude-table-data=public.raster_columns --exclude-table-data=public.raster_overviews --file=%diferencias%.tmp --dbname=%db2%
+fc /n num_tablas_bd1.txt num_tablas_bd2.txt > diferencias_tablas.txt
+fc /n num_vistas_bd1.txt num_vistas_bd2.txt > diferencias_vistas.txt
+fc /n num_indices_bd1.txt num_indices_bd2.txt > diferencias_indices.txt
+fc /n num_secuencias_bd1.txt num_secuencias_bd2.txt > diferencias_secuencias.txt
+fc /n num_funciones_bd1.txt num_funciones_bd2.txt > diferencias_funciones.txt
+fc /n num_triggers_bd1.txt num_triggers_bd2.txt > diferencias_triggers.txt
+fc /n num_procedimientos_bd1.txt num_procedimientos_bd2.txt > diferencias_procedimientos.txt
+
+REM Mostrar resultados
+echo Diferencias en el número de tablas:
+type diferencias_tablas.txt
+echo.
+echo Diferencias en el número de vistas:
+type diferencias_vistas.txt
+echo.
+echo Diferencias en el número de índices:
+type diferencias_indices.txt
+echo.
+echo Diferencias en el número de secuencias:
+type diferencias_secuencias.txt
+echo.
+echo Diferencias en el número de funciones almacenadas:
+type diferencias_funciones.txt
+echo.
+echo Diferencias en el número de triggers:
+type diferencias_triggers.txt
+echo.
+echo Diferencias en el número de procedimientos almacenados:
+type diferencias_procedimientos.txt
+
+REM Eliminar archivos temporales
+del *.txt
+del *.tmp

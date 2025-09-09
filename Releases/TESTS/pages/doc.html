@@ -1,0 +1,220 @@
+<HTML><BODY><H1>PGDIFF Documentation and Notes</H1>
+
+<H2>Background</H2>
+
+PGdiff aims to provide a utility for examining two separate PostgreSQL schemas and and if desired create an alter script for altering the one schema into the other. Often when a developer has a database system, they will have a production and a testing database where new features are tested, tables added, deleted and altered. PostgreSQL allows the developer to do a dump and reload but often the developer just wants to update the production database schema and align it with the testing db without a full dump/reload.  
+
+<BR><BR><I>Why not make this a command line utility?</I><BR>By making this a gui/client web app it allows you more flexibility and the ability to preview / edit and test the generated alter scipts or just focus on one aspect of the schema (table,index,etc). Also by visually inspecting the test databases and the differences in schema you can have better quality assurance that the pgdiff utility is doing as desired. As the utility matures it is slated as a future item to make a striped down command line version of the tool.
+
+<H2>Security Warning</H2>
+
+This Utility is <B>NOT</B> meant to be run on an open/internet accessible server. Since this utility allows arbitrary SQL to be executed. If you trust the users that are excuting this SQL and are on a restricted environment it should not be a concern. However this ability to exectute arbitrary SQL creates a major security concern if you are on an open network. A malacious attacker could use this program to retrieve, destroy your data or launch a SQL DOS attack or crash the PostgreSQL server. The demonstration server has a feature that hobbles the functionality of the program but allows users to get a feel for what they can do with the program. To disable the added security flag make sure to change the line in the init.tcl file from:<BR><BR><I>nsv_set . security 1<BR><BR>to:<BR><BR>nsv_set . security 0</I><BR>
+
+<H2>How it Works</H2>
+PGdiff mainly consists of three pages which correspond to the three steps of usings pgdiff:
+<BR>
+<UL><LI>Pick your schemas to compare the source and target dbs (Page 1 - index.adp)
+<UL>
+<LI>From databases configured in the AOLserver configuration file
+<LI>From schema file and the AOLserver configuration file
+<LI>From textarea input boxes in browser
+</UL><BR>
+<LI>Allow PGdiff to Create Alter Scripts (Page 2 - main.adp)
+<UL>
+<LI>Create sql schema files from the Input sources
+<LI>Parse the schema files created into comparable structures
+<LI>Create the alter scripts for migrating the source db into the target db
+<LI>At this point you can view / compare schemas and modify the generated alter scripts
+</UL><BR>
+<LI>Test the Alter Script generated for expected results in two steps(Page 3 - test.adp)
+<UL>
+<LI>Step 1: ReCreating the Source DB in the <i>test</i> DB
+<UL>
+<LI>It destroys the old <i>test</i> db
+<LI>It creates a new empty <i>test</i> db
+<LI>It copies the source db (schema only) into the <i>test</i> db
+<LI>Display a comparison of the <i>test</i> db with the source db 
+</UL>
+<LI>Step 2: Altering the  DB
+<UL>
+<LI>It then runs the target alter scipts on the test db
+<LI>Display a comparison of the test db (post alter script) to your target db
+</UL>
+</UL>
+</UL>
+
+<H2>Installation</H2>
+
+PGdiff is implemented using AOLserver as a gui front end for its execution. In order to run pgdiff you must:
+
+<UL><LI>Create 3 testing databases in postgres for the source, target and testing dbs
+<LI>Setup a working AOLserver installation on your machine including a postgres module
+</UL>
+<BR><B>Step 1: Creating your dummy databases</B><BR><BR>
+pgdiff uses a testing db (test) for testing the generated alter scripts. There are also 2 other temporary dbs (pg_diff1 and pg_diff2)  that need to be created if you have not provided the source or target dbs yourself. This is the case if you are inputing the schema by file or the form input boxes.These databases may be dropped and recreated by pgdiff.<BR><BR>Simply use the CREATE DATABASE command in psql or use the command line utilities for creating the dbs.<BR>
+<I>CREATE DATABASE pgdiff_1;<BR>
+CREATE DATABASE pgdiff_2;<BR>
+CREATE DATABASE test;</I><BR>
+
+<BR><B>Step 2: Setting up AOLserver</B><BR>
+If you are not currently running an instance of AOLserver you need to download it an install it locally. I recommend you grab the either the source or binaries from <A HREF=http://uptime.openacs.org/aolserver-openacs/>here</A>. The only module you will need for AOLserver is the postgresql driver. After you have installed AOLserver you will need to rename you server1 directory under the aolserver home where you have set up aolserver.
+<BR><BR><I>>cd /usr/local/aolserver/servers<BR>
+>mv server1 pgdiff
+</i><BR><BR>
+Next replace the tcl and pages directories in the pgdiff tarball to the corresponding directories under your new pgdiff directory.<BR><BR>
+<I>>mv /tmp/pgdiff/pages /usr/local/aolserver/servers/pgdiff/pages
+<BR>
+>mv /tmp/pgdiff/tcl /usr/local/aolserver/servers/pgdiff/modules/tcl
+</I><BR><BR>
+
+Next you must setup the databases that you wish to work with in the AOLserver configuration guide. Below is a sample config file for pgdiff (edit where necessary locally):
+<BR>
+<PRE>
+
+set httpport               80
+
+# The hostname and address should be set to actual values.
+set hostname               [ns_info hostname]
+set address                [ns_info address]
+
+set servername             "pgdiff"
+set serverdesc             "Postgresql Difference Server"
+
+set currenttime            [clock seconds]
+
+set homedir                [file dirname [ns_info config]]  
+set bindir                 [file dirname [ns_info nsd]]
+
+set pageroot               ${homedir}/servers/${servername}/pages
+set directoryfile          index.adp
+
+set ext [info sharedlibextension]
+
+#
+# Global server parameters 
+#
+ns_section "ns/parameters"
+ns_param   home            $homedir
+ns_param   debug           false
+
+ns_param server_name             "PG DIFF Server"
+ns_param logroll         true
+ns_param serverlog       ${homedir}/servers/${servername}/modules/nslog/${currenttime}.serverlog
+
+# Thread library (nsthread) parameters
+#
+ns_section "ns/threads"
+ns_param   mutexmeter      true      ;# measure lock contention
+ns_param   stacksize [expr 128*1024] ;# Per-thread stack size.
+
+ns_section "ns/db/drivers"
+ns_param postgres     ${bindir}/postgres.so
+
+ns_section "ns/server/${servername}/db"
+ns_param Pools * 
+ns_param DefaultPool	test	
+
+ns_section "ns/db/pools"
+ns_param test "This pool is for testing the alter scripts"
+ns_param pgdiff_1 "This pool is for holding a source schema"
+ns_param pgdiff_2 "This pool is for holding a target schema"
+
+ns_section "ns/db/pool/test"
+ns_param Driver postgres
+ns_param User       "postgres"
+ns_param Datasource "127.0.0.1:5432:test"
+ns_param Connection 2
+ns_param MaxOpen	1
+ns_param MaxIdle	1
+ns_param Verbose	on
+
+ns_section "ns/db/pool/pgdiff_1"
+ns_param Driver postgres
+ns_param User       "postgres"
+ns_param Datasource "127.0.0.1:5432:pgdiff_1"
+ns_param Connection 2
+ns_param MaxOpen	1
+ns_param MaxIdle	1
+ns_param Verbose	on
+
+ns_section "ns/db/pool/pgdiff_2"
+ns_param Driver postgres
+ns_param User       "postgres"
+ns_param Datasource "127.0.0.1:5432:pgdiff_2"
+ns_param Connection 2
+ns_param MaxOpen	1
+ns_param MaxIdle	1
+ns_param Verbose	on
+
+ns_section "ns/servers"
+ns_param   $servername     $serverdesc
+
+ns_section "ns/server/${servername}"
+ns_param   directoryfile   index.adp;
+
+#
+# ADP (AOLserver Dynamic Page) configuration
+#
+ns_section "ns/server/${servername}/adp"
+ns_param   map             "/*.adp"  ;# Extensions to parse as ADP's.
+
+#
+# Socket driver module (HTTP)  -- nssock
+#
+ns_section "ns/server/${servername}/module/nssock"
+ns_param   port            $httpport
+ns_param   hostname        $hostname
+ns_param   address         $address
+
+#
+# Modules to load
+#
+ns_section "ns/server/${servername}/modules"
+ns_param   nssock          ${bindir}/nssock${ext}
+ns_param   nslog           ${bindir}/nslog${ext}
+
+</PRE>
+<BR>
+Note that we want the handles to time out very quickly for we will be destroying/creating the test database and don't want errors.  Also if you will want to add db sections for local dbs that you wish to work with.
+<BR><BR>After you have created this configuration file start AOLserver by executing as root:<BR><I>>/usr/local/aolserver/bin/nsd -u nsadmin -zkt nsd.tcl</I>
+<BR>
+
+<H2>Quirks & Limitations</H2>
+
+<UL>
+<LI>Currently PGdiff does not fully work with views/stored procedure/functions/ and proceural languages. Hopefully by next version.
+<LI>Currently you may recieve errors in the log for items which are not really a problem. These errors are ok to have but you should be aware to distinguish between these and real errors that may occur:
+<UL>
+<LI>Dropping the tmp tables for manipulating the schema. These tables must not exist at begining of portions of the script so it is ok to drop them even if they don't exist.
+<LI>Dropping indexes on tables where the new schema does not include the field to be indexed. This may occur if the script tries to remove an index twice, once by the creating the new table for the special case and then after by simply dropping the no longer present index.
+<LI>Creating an index that no longer is needed. We must add back in all indexs after some actions and the indexs may not need to exist in the new schema
+<LI>
+</UL>
+<LI>Postgres sometimes has circular references in the db schema file. Detecting these and loading in the proper order.
+<LI>If a columns data type has changed pgdiff will try to do a select into the new field. If types are not castable it may fail.
+</UL>
+
+<H2>Future</H2>
+<UL><LI>Port and create command line striped down version which just creates the alter script.
+<LI>Add ability to enter two files containing list of schema files to compare
+<LI>More granular working of <I>other</I> type ie ... languages, types, etc
+<LI>Constraint checking
+<LI>Circular reference checking
+<LI>Working with different PG versions
+<LI>Adding new dbs without using nsd.tcl config file
+<LI>Validation of casting between db types
+</UL>
+
+
+<H2>References</H2>
+
+<UL>
+<LI><A HREF=http://www.sourceforge.net/projects/pgdiff>PGdiff at Source Forge</A>
+<LI><A HREF=http://www.23pools.com:8000>PGdiff Demo Server</A>
+<LI><A HREF=http://techdocs.postgresql.org/techdocs/compensating4features.php>Compensating for Unimplemented Features in PostgreSQL 7.1 by John Pagakis & Todd Gauthier</A>
+<LI><a href="http://www.postgresql.org/idocs/index.php?pg-system-catalogs.html" target="_self">About the PostgreSQL System Catalogs</a>
+<LI><a href="http://techdocs.postgresql.org/techdocs/hackingreferentialintegrity.php" target="_self">Referential integrity tutorial & hacking the referential integrity tables bt Burton J.</a>
+</UL>
+
+
+</BODY></HTML>
